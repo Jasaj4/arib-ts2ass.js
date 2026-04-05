@@ -31,7 +31,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "aribb24.js": "^2.0.12"
+    "aribb24.js": "file:lib/aribb24.js"
   },
   "devDependencies": {
     "vite": "^7.1.9"

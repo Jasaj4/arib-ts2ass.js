@@ -1,0 +1,3 @@
+[submodule "lib/aribb24.js"]
+	path = lib/aribb24.js
+	url = https://github.com/Jasaj4/aribb24.js.git
