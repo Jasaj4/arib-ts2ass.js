@@ -348,7 +348,8 @@ if (args.includes('--viewer')) {
   const viewerDir = join(__dirname, 'debug-viewer');
   let viteBin;
   try {
-    viteBin = require.resolve('vite/bin/vite.js');
+    const viteEntry = require.resolve('vite');
+    viteBin = join(viteEntry, '..', '..', '..', 'bin', 'vite.js');
   } catch {
     console.error('デバッグビューアを起動できません: `npm install` で依存関係をインストールしてください。');
     process.exit(1);
