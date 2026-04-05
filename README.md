@@ -2,9 +2,9 @@
 
 MPEG-TS 録画ファイルから ARIB STD-B24 字幕を抽出し、ASS (Advanced SubStation Alpha) 字幕ファイルに変換するCLIツール。
 
-Node.js のみで動作し、C/C++ コンパイラ等のビルド環境は不要。
+Node.js のみで動作し、C/C++ コンパイラ等のネイティブビルド環境は不要。
 
-ARIB 字幕のデマルチプレクスとパースという一番重い部分は [aribb24.js](https://github.com/monyone/aribb24.js) がすべてやってくれている。本ツールはその出力を ASS 形式に整形しているだけ。aribb24.js の作者 [@monyone](https://github.com/monyone) 氏に感謝。
+ARIB 字幕のデマルチプレクスとパースという一番重い部分は [aribb24.js](https://github.com/monyone/aribb24.js) がすべてやってくれている。本ツールはその出力を ASS 形式に整形しているだけ。aribb24.js の作者 [@monyone](https://github.com/monyone) 氏に感謝。現在は[フォーク版](https://github.com/Jasaj4/aribb24.js)を使用している（バグ修正のため）。
 
 ## 背景
 
@@ -13,7 +13,7 @@ ARIB 字幕のデマルチプレクスとパースという一番重い部分は
 - C で書かれておりビルドが必要（環境構築の手間、クロスプラットフォーム対応の難しさ）
 - DRCS（放送局が独自定義するビットマップ文字）を処理できない
 
-本ツールは JavaScript で実装し `npm install` だけで使える。DRCS は ASS のドローイングコマンド (`\p1`) でベクター描画として埋め込むため、放送局独自の記号も再現される。
+本ツールは JavaScript で実装されている。DRCS は ASS のドローイングコマンド (`\p1`) でベクター描画として埋め込むため、放送局独自の記号も再現される。
 
 ## 必要環境
 
@@ -22,8 +22,13 @@ ARIB 字幕のデマルチプレクスとパースという一番重い部分は
 ## インストール
 
 ```bash
+git clone --recursive https://github.com/Jasaj4/arib-ts2ass.js.git
+cd arib-ts2ass.js
+cd lib/aribb24.js && npm install && npm run build:all && cd ../..
 npm install
 ```
+
+サブモジュール (aribb24.js) のビルドに TypeScript と Vite が必要だが、aribb24.js の devDependencies に含まれているため別途インストールは不要。
 
 デバッグビューア (`--viewer`) もこの依存関係のインストールで使えるようになる。
 
@@ -80,4 +85,4 @@ node arib-ts2ass.js --viewer
 
 ## 依存パッケージ
 
-- [aribb24.js](https://github.com/monyone/aribb24.js) — ARIB B24 デマルチプレクサ・パーサー
+- [aribb24.js](https://github.com/Jasaj4/aribb24.js) — ARIB B24 デマルチプレクサ・パーサー（[monyone/aribb24.js](https://github.com/monyone/aribb24.js) のフォーク。ひらがなが欠落するバグを修正）
