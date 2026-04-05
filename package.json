@@ -14,6 +14,7 @@
     "ts2ass": "./arib-ts2ass.js"
   },
   "scripts": {
+    "prepare": "cd lib/aribb24.js && npm install && npm run build:all",
     "ts2ass": "node arib-ts2ass.js",
     "viewer": "vite debug-viewer --open"
   },
