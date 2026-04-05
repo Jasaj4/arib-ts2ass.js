@@ -37,6 +37,7 @@ class RecordingContext {
   constructor() {
     this.characterEvents = [];
     this.drcsEvents = [];
+    this.rectEvents = [];
     // Transform state (renderer always does: setTransform(identity) → translate → scale → draw)
     this._tx = 0; this._ty = 0;
     this._sx = 1; this._sy = 1;
@@ -59,9 +60,21 @@ class RecordingContext {
     this._sx = a; this._sy = d; this._tx = e; this._ty = f;
   }
 
-  // --- Drawing (no-ops for recording) ---
+  // --- Drawing ---
   clearRect() {}
-  fillRect() {}
+  fillRect(x, y, w, h) {
+    // Record fillRects drawn in non-identity transform (highlight / underline borders)
+    // Background fills happen at identity transform and are skipped.
+    if (this._tx !== 0 || this._ty !== 0 || this._sx !== 1 || this._sy !== 1) {
+      this.rectEvents.push({
+        x: this._tx + x * this._sx,
+        y: this._ty + y * this._sy,
+        w: w * this._sx,
+        h: h * this._sy,
+        fillStyle: this.fillStyle,
+      });
+    }
+  }
 
   // --- Text (character rendering) ---
   strokeText(_text, _x, _y, _maxWidth) {
@@ -209,7 +222,25 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     // --- aribb24.js レンダラーで描画を記録 ---
     const canvas = new RecordingCanvas(plane[0], plane[1]);
     canvasRenderingStrategy(canvas, MockPath2D, [1, 1], parsed, captionInfo, rendererOption);
-    const { characterEvents, drcsEvents } = canvas._ctx;
+    const { characterEvents, drcsEvents, rectEvents } = canvas._ctx;
+
+    // --- Highlight 枠線を ASS 描画コマンドに変換 (テキストより先に描画) ---
+    if (rectEvents.length > 0) {
+      const byColor = {};
+      for (const r of rectEvents) (byColor[r.fillStyle] ??= []).push(r);
+      for (const [color, rects] of Object.entries(byColor)) {
+        const drawing = rects.map(r => {
+          const x1 = Math.round(r.x);
+          const y1 = Math.round(r.y);
+          const x2 = Math.round(r.x + r.w);
+          const y2 = Math.round(r.y + r.h);
+          return `m ${x1} ${y1} l ${x2} ${y1} ${x2} ${y2} ${x1} ${y2}`;
+        }).join(' ');
+        const assColor = cssColorToASS(color);
+        const assText = `{\\pos(0,0)\\an7}{\\c${assColor}\\bord0\\shad0}{\\p1}${drawing}{\\p0}`;
+        dialogues.push(`Dialogue: 0,${startStr},${endStr},Cap_Default,,0,0,0,,${assText}`);
+      }
+    }
 
     // --- 記録とパーストークンを対応付けて ASS Dialogue 生成 ---
     let charIdx = 0, drcsIdx = 0;
