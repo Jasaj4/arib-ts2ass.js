@@ -1,0 +1,39 @@
+{
+  "name": "arib-ts2ass",
+  "version": "1.0.0",
+  "description": "ARIB B24 字幕を MPEG-TS 録画ファイルから ASS 字幕に変換",
+  "author": "Jasaj4",
+  "type": "module",
+  "files": [
+    "arib-ts2ass.js",
+    "debug-viewer",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "ts2ass": "./arib-ts2ass.js"
+  },
+  "scripts": {
+    "ts2ass": "node arib-ts2ass.js",
+    "viewer": "vite debug-viewer --open"
+  },
+  "keywords": ["arib", "b24", "subtitle", "ass", "mpeg-ts", "caption"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jasaj4/arib-ts2ass.js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jasaj4/arib-ts2ass.js/issues"
+  },
+  "homepage": "https://github.com/Jasaj4/arib-ts2ass.js#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "aribb24.js": "^2.0.12"
+  },
+  "devDependencies": {
+    "vite": "^7.1.9"
+  }
+}

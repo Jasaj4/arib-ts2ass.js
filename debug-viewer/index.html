@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARIB B24 字幕テスト</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 { margin-bottom: 16px; font-size: 1.4em; }
+    #drop-zone {
+      width: 100%;
+      max-width: 980px;
+      border: 2px dashed #555;
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    #drop-zone.dragover { border-color: #4fc3f7; }
+    #drop-zone input { display: none; }
+    #subtitle-canvas {
+      display: none;
+      background: #000;
+      border: 1px solid #333;
+      border-radius: 4px;
+      width: 720px;
+      height: 405px;
+    }
+    #controls {
+      width: 100%;
+      max-width: 980px;
+      margin-top: 10px;
+      display: none;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    #controls button {
+      background: #333;
+      color: #eee;
+      border: 1px solid #555;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.95em;
+    }
+    #controls button:hover { background: #444; }
+    #caption-info {
+      font-size: 0.9em;
+      color: #aaa;
+      min-width: 260px;
+      text-align: center;
+    }
+    #status {
+      margin-top: 12px;
+      font-size: 0.9em;
+      color: #aaa;
+      max-width: 980px;
+      width: 100%;
+    }
+    .hint {
+      margin-top: 8px;
+      font-size: 0.8em;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>ARIB B24 字幕レンダリングテスト</h1>
+
+  <div id="drop-zone">
+    <p>録画TSファイルをドラッグ＆ドロップ、またはクリックして選択</p>
+    <input type="file" id="file-input" accept=".ts,.m2ts,.mts">
+  </div>
+
+  <canvas id="subtitle-canvas"></canvas>
+
+  <div id="controls">
+    <button id="btn-prev">◀ 前へ</button>
+    <span id="caption-info">-- / --</span>
+    <button id="btn-next">次へ ▶</button>
+    <button id="btn-autoplay">自動再生</button>
+    <button id="btn-save-json">JSON保存</button>
+    <button id="btn-save-png">PNG保存</button>
+  </div>
+
+  <div id="status"></div>
+  <p class="hint">← → キーでも字幕を切り替えられます</p>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

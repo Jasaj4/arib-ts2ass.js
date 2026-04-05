@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+.claude/
+_archive/
+*.ass
+*.json
+!package.json
+!package-lock.json
