@@ -272,6 +272,8 @@ async function loadFile(file) {
           count++;
           if (count % 10 === 0) {
             log(`字幕抽出中... ${count} 件`);
+            // Yield to the event loop so the browser can repaint and stay responsive
+            await new Promise((r) => setTimeout(r, 0));
           }
         }
       } catch (e) {
