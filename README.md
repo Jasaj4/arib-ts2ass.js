@@ -24,11 +24,10 @@ ARIB 字幕のデマルチプレクスとパースという一番重い部分は
 ```bash
 git clone --recursive https://github.com/Jasaj4/arib-ts2ass.js.git
 cd arib-ts2ass.js
-cd lib/aribb24.js && npm install && npm run build:all && cd ../..
 npm install
 ```
 
-サブモジュール (aribb24.js) のビルドに TypeScript と Vite が必要だが、aribb24.js の devDependencies に含まれているため別途インストールは不要。
+`npm install` を実行すると、サブモジュール (aribb24.js) の依存インストールとビルドも自動で行われる。ビルドに TypeScript と Vite が必要だが、aribb24.js の devDependencies に含まれているため別途インストールは不要。
 
 デバッグビューア (`--viewer`) もこの依存関係のインストールで使えるようになる。
 
