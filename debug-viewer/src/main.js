@@ -22,7 +22,7 @@ let currentIndex = -1;
 let autoPlayTimer = null;
 let currentFileName = '';
 
-const tokenizer = new ARIBB24JapaneseJIS8Tokenizer();
+
 
 const rendererOption = CanvasRenderingOption.from({
   color: {
@@ -262,6 +262,7 @@ async function loadFile(file) {
       if (entry.data.tag !== 'CaptionStatement') continue;
 
       try {
+        const tokenizer = new ARIBB24JapaneseJIS8Tokenizer();
         const tokens = tokenizer.tokenize(entry.data);
         if (tokens.length > 0) {
           captions.push({
