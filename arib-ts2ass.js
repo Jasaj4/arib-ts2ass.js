@@ -423,7 +423,6 @@ console.log(`入力: ${inputPath}`);
 
 const nodeStream = createReadStream(inputPath);
 const webStream = Readable.toWeb(nodeStream);
-const tokenizer = new ARIBB24JapaneseJIS8Tokenizer();
 const entries = [];
 let count = 0;
 
@@ -432,6 +431,7 @@ process.stdout.write('字幕抽出中...');
 try {
   for await (const entry of demuxMPEGTS(webStream, { type: 'Caption' })) {
     try {
+      const tokenizer = new ARIBB24JapaneseJIS8Tokenizer();
       const tokens = tokenizer.tokenize(entry.data);
       const parser = new ARIBB24Parser(ARIBB24JapaneseInitialParserState);
       const parsed = parser.parse(tokens);

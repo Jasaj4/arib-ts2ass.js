@@ -4,7 +4,7 @@ MPEG-TS 録画ファイルから ARIB STD-B24 字幕を抽出し、ASS (Advanced
 
 Node.js のみで動作し、C/C++ コンパイラ等のネイティブビルド環境は不要。
 
-ARIB 字幕のデマルチプレクスとパースという一番重い部分は [aribb24.js](https://github.com/monyone/aribb24.js) がすべてやってくれている。本ツールはその出力を ASS 形式に整形しているだけ。aribb24.js の作者 [@monyone](https://github.com/monyone) 氏に感謝。現在は[フォーク版](https://github.com/Jasaj4/aribb24.js)を使用している（バグ修正のため）。
+ARIB 字幕のデマルチプレクスとパースという一番重い部分は [aribb24.js](https://github.com/monyone/aribb24.js) がすべてやってくれている。本ツールはその出力を ASS 形式に整形しているだけ。aribb24.js の作者 [@monyone](https://github.com/monyone) 氏に感謝。
 
 ## 背景
 
@@ -22,12 +22,8 @@ ARIB 字幕のデマルチプレクスとパースという一番重い部分は
 ## インストール
 
 ```bash
-git clone --recursive https://github.com/Jasaj4/arib-ts2ass.js.git
-cd arib-ts2ass.js
 npm install
 ```
-
-`npm install` を実行すると、サブモジュール (aribb24.js) の依存インストールとビルドも自動で行われる。ビルドに TypeScript と Vite が必要だが、aribb24.js の devDependencies に含まれているため別途インストールは不要。
 
 デバッグビューア (`--viewer`) もこの依存関係のインストールで使えるようになる。
 
@@ -84,4 +80,4 @@ node arib-ts2ass.js --viewer
 
 ## 依存パッケージ
 
-- [aribb24.js](https://github.com/Jasaj4/aribb24.js) — ARIB B24 デマルチプレクサ・パーサー（[monyone/aribb24.js](https://github.com/monyone/aribb24.js) のフォーク。ひらがなが欠落するバグを修正）
+- [aribb24.js](https://github.com/monyone/aribb24.js) — ARIB B24 デマルチプレクサ・パーサー

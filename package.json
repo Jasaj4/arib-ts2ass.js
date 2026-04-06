@@ -14,7 +14,6 @@
     "ts2ass": "./arib-ts2ass.js"
   },
   "scripts": {
-    "prepare": "cd lib/aribb24.js && npm install && npm install typescript@~5.7.2 && npm run build:all",
     "ts2ass": "node arib-ts2ass.js",
     "viewer": "vite debug-viewer --open"
   },
@@ -32,7 +31,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "aribb24.js": "file:lib/aribb24.js"
+    "aribb24.js": "^2.0.12"
   },
   "devDependencies": {
     "vite": "^7.1.9"
