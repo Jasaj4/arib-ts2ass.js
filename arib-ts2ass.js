@@ -9,7 +9,7 @@
  *   node arib-ts2ass.js <input.ts> [output.ass]
  *   node arib-ts2ass.js <input.ts> --json <output.json>
  */
-import { createReadStream, writeFileSync } from 'node:fs';
+import { createReadStream, writeFileSync, renameSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { Readable } from 'node:stream';
@@ -174,11 +174,8 @@ const rendererOption = CanvasRenderingOption.from({});
 const captionInfo = { association: 'ARIB', language: 'jpn' };
 const require = createRequire(import.meta.url);
 
-function generateASS(source, entries) {
-  const firstParsed = entries.find(e => e.parsed?.some(p => p.state?.plane));
-  const plane = firstParsed?.parsed.find(p => p.state?.plane)?.state.plane || [1920, 1080];
-
-  const header = `\ufeff[Script Info]
+function generateASSHeader(source, plane) {
+  return `\ufeff[Script Info]
 Title: ${source || 'ARIB B24 Subtitles'}
 ScriptType: v4.00+
 PlayResX: ${plane[0]}
@@ -194,127 +191,180 @@ Style: Cap_Default,Hiragino Maru Gothic Pro,72,&H00FFFFFF,&H000000FF,&H00000000,
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
+}
+
+/**
+ * Generate ASS Dialogue lines for a single entry.
+ * @param {object} entry - The current entry {pts, parsed, ...}
+ * @param {object|null} nextContentEntry - The next entry with content (for end-time calc), or null
+ * @param {number[]} plane - [width, height]
+ * @returns {string[]} Array of Dialogue lines
+ */
+function generateDialoguesForEntry(entry, nextContentEntry, plane) {
+  const parsed = entry.parsed;
+  if (!parsed || parsed.length === 0) return [];
+
+  const hasContent = parsed.some(p => p.tag === 'Character' || p.tag === 'DRCS');
+  if (!hasContent) return [];
+
+  // --- Timing ---
+  const pts = entry.pts;
+  const lastElapsed = parsed.reduce((max, p) => Math.max(max, p.state?.elapsed_time || 0), 0);
+  let endTime;
+  if (lastElapsed > 0) {
+    endTime = pts + lastElapsed;
+  } else {
+    endTime = nextContentEntry ? Math.min(nextContentEntry.pts, pts + 10) : pts + 5;
+  }
+  const startStr = formatASSTime(pts);
+  const endStr = formatASSTime(endTime);
+
+  // --- aribb24.js レンダラーで描画を記録 ---
+  const canvas = new RecordingCanvas(plane[0], plane[1]);
+  canvasRenderingStrategy(canvas, MockPath2D, [1, 1], parsed, captionInfo, rendererOption);
+  const { characterEvents, drcsEvents, rectEvents } = canvas._ctx;
 
   const dialogues = [];
 
-  for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i];
-    const parsed = entry.parsed;
-    if (!parsed || parsed.length === 0) continue;
-
-    const hasContent = parsed.some(p => p.tag === 'Character' || p.tag === 'DRCS');
-    if (!hasContent) continue;
-
-    // --- Timing ---
-    const pts = entry.pts;
-    const lastElapsed = parsed.reduce((max, p) => Math.max(max, p.state?.elapsed_time || 0), 0);
-    let endTime;
-    if (lastElapsed > 0) {
-      endTime = pts + lastElapsed;
-    } else {
-      const nextEntry = entries.slice(i + 1).find(e =>
-        e.parsed?.some(p => p.tag === 'Character' || p.tag === 'DRCS'));
-      endTime = nextEntry ? Math.min(nextEntry.pts, pts + 10) : pts + 5;
-    }
-    const startStr = formatASSTime(pts);
-    const endStr = formatASSTime(endTime);
-
-    // --- aribb24.js レンダラーで描画を記録 ---
-    const canvas = new RecordingCanvas(plane[0], plane[1]);
-    canvasRenderingStrategy(canvas, MockPath2D, [1, 1], parsed, captionInfo, rendererOption);
-    const { characterEvents, drcsEvents, rectEvents } = canvas._ctx;
-
-    // --- Highlight 枠線を ASS 描画コマンドに変換 (テキストより先に描画) ---
-    if (rectEvents.length > 0) {
-      const byColor = {};
-      for (const r of rectEvents) (byColor[r.fillStyle] ??= []).push(r);
-      for (const [color, rects] of Object.entries(byColor)) {
-        const drawing = rects.map(r => {
-          const x1 = Math.round(r.x);
-          const y1 = Math.round(r.y);
-          const x2 = Math.round(r.x + r.w);
-          const y2 = Math.round(r.y + r.h);
-          return `m ${x1} ${y1} l ${x2} ${y1} ${x2} ${y2} ${x1} ${y2}`;
-        }).join(' ');
-        const assColor = cssColorToASS(color);
-        const assText = `{\\pos(0,0)\\an7}{\\c${assColor}\\bord0\\shad0}{\\p1}${drawing}{\\p0}`;
-        dialogues.push(`Dialogue: 0,${startStr},${endStr},Cap_Default,,0,0,0,,${assText}`);
-      }
-    }
-
-    // --- 記録とパーストークンを対応付けて ASS Dialogue 生成 ---
-    let charIdx = 0, drcsIdx = 0;
-    for (const token of parsed) {
-      if (token.tag === 'Character' && charIdx < characterEvents.length) {
-        const ev = characterEvents[charIdx++];
-
-        // Position: レンダラーが計算した文字セルの中心
-        const cx = Math.round(ev.centerX);
-        const cy = Math.round(ev.centerY);
-
-        // Font size: レンダラーの font プロパティから取得
-        const fontSize = parseFloat(ev.font) || 72;
-
-        // Scale: scaleX は maxWidth/fontSize、scaleY はキャンバス変換から
-        const maxWidth = ev.maxWidth ?? fontSize;
-        const scaleX = maxWidth / fontSize;
-        const scaleY = ev.scaleY;
-
-        // 半角置換の検出 (レンダラーが内部で変換済み)
-        const isHalfwidth = (token.character !== ev.text);
-        const fscx = isHalfwidth ? 100 : Math.round(scaleX * 100);
-        const fscy = Math.round(scaleY * 100);
-
-        // Colors
-        const fgColor = cssColorToASS(ev.fillStyle);
-        const ornStr = ev.ornament
-          ? `\\3c${cssColorToASS(ev.ornament.color)}\\bord3`
-          : '\\3c&H00000000\\bord3';
-
-        // Underline / Flashing (レンダラーでは fillRect で描画されるが ASS ではタグで)
-        let extra = '';
-        if (token.state?.underline) extra += '\\u1';
-        if (token.state?.flashing === 0x40)
-          extra += '\\t(0,500,\\alpha&HFF&)\\t(500,1000,\\alpha&H00&)';
-        else if (token.state?.flashing === 0x47)
-          extra += '\\alpha&HFF&\\t(0,500,\\alpha&H00&)\\t(500,1000,\\alpha&HFF&)';
-
-        // Character (ASS escaping)
-        let c = ev.text;
-        if (c === '\\') c = '\\\\';
-        else if (c === '{') c = '\\{';
-        else if (c === '}') c = '\\}';
-
-        const overrides = `\\c${fgColor}\\fs${fontSize}\\fscx${fscx}\\fscy${fscy}${ornStr}${extra}`;
-        const assText = `{\\pos(${cx},${cy})\\an5}{${overrides}}${c}`;
-        dialogues.push(`Dialogue: 0,${startStr},${endStr},Cap_Default,,0,0,0,,${assText}`);
-
-      } else if (token.tag === 'DRCS' && drcsIdx < drcsEvents.length) {
-        const ev = drcsEvents[drcsIdx++];
-
-        // Position & scale: レンダラーから (DRCS はオフセット込みの位置)
-        const x = Math.round(ev.tx);
-        const y = Math.round(ev.ty);
-        const drawScaleX = Math.round(ev.sx * 100);
-        const drawScaleY = Math.round(ev.sy * 100);
-
-        // Colors
-        const fgColor = cssColorToASS(ev.fillStyle);
-        const ornStr = ev.ornament
-          ? `\\3c${cssColorToASS(ev.ornament.color)}\\bord3`
-          : '\\3c&H00000000\\bord3';
-
-        // Drawing: 既存の DRCS→ASS 描画変換 (ビットマップ処理は維持)
-        const drawing = drcsToDrawing(token);
-
-        const overrides = `\\c${fgColor}${ornStr}`;
-        const assText = `{\\pos(${x},${y})\\an7}{${overrides}}{\\p1\\fscx${drawScaleX}\\fscy${drawScaleY}}${drawing}{\\p0}`;
-        dialogues.push(`Dialogue: 0,${startStr},${endStr},Cap_Default,,0,0,0,,${assText}`);
-      }
+  // --- Highlight 枠線を ASS 描画コマンドに変換 (テキストより先に描画) ---
+  if (rectEvents.length > 0) {
+    const byColor = {};
+    for (const r of rectEvents) (byColor[r.fillStyle] ??= []).push(r);
+    for (const [color, rects] of Object.entries(byColor)) {
+      const drawing = rects.map(r => {
+        const x1 = Math.round(r.x);
+        const y1 = Math.round(r.y);
+        const x2 = Math.round(r.x + r.w);
+        const y2 = Math.round(r.y + r.h);
+        return `m ${x1} ${y1} l ${x2} ${y1} ${x2} ${y2} ${x1} ${y2}`;
+      }).join(' ');
+      const assColor = cssColorToASS(color);
+      const assText = `{\\pos(0,0)\\an7}{\\c${assColor}\\bord0\\shad0}{\\p1}${drawing}{\\p0}`;
+      dialogues.push(`Dialogue: 0,${startStr},${endStr},Cap_Default,,0,0,0,,${assText}`);
     }
   }
 
-  return header + dialogues.join('\n') + '\n';
+  // --- 記録とパーストークンを対応付けて ASS Dialogue 生成 ---
+  let charIdx = 0, drcsIdx = 0;
+  for (const token of parsed) {
+    if (token.tag === 'Character' && charIdx < characterEvents.length) {
+      const ev = characterEvents[charIdx++];
+
+      // Position: レンダラーが計算した文字セルの中心
+      const cx = Math.round(ev.centerX);
+      const cy = Math.round(ev.centerY);
+
+      // Font size: レンダラーの font プロパティから取得
+      const fontSize = parseFloat(ev.font) || 72;
+
+      // Scale: scaleX は maxWidth/fontSize、scaleY はキャンバス変換から
+      const maxWidth = ev.maxWidth ?? fontSize;
+      const scaleX = maxWidth / fontSize;
+      const scaleY = ev.scaleY;
+
+      // 半角置換の検出 (レンダラーが内部で変換済み)
+      const isHalfwidth = (token.character !== ev.text);
+      const fscx = isHalfwidth ? 100 : Math.round(scaleX * 100);
+      const fscy = Math.round(scaleY * 100);
+
+      // Colors
+      const fgColor = cssColorToASS(ev.fillStyle);
+      const ornStr = ev.ornament
+        ? `\\3c${cssColorToASS(ev.ornament.color)}\\bord3`
+        : '\\3c&H00000000\\bord3';
+
+      // Underline / Flashing (レンダラーでは fillRect で描画されるが ASS ではタグで)
+      let extra = '';
+      if (token.state?.underline) extra += '\\u1';
+      if (token.state?.flashing === 0x40)
+        extra += '\\t(0,500,\\alpha&HFF&)\\t(500,1000,\\alpha&H00&)';
+      else if (token.state?.flashing === 0x47)
+        extra += '\\alpha&HFF&\\t(0,500,\\alpha&H00&)\\t(500,1000,\\alpha&HFF&)';
+
+      // Character (ASS escaping)
+      let c = ev.text;
+      if (c === '\\') c = '\\\\';
+      else if (c === '{') c = '\\{';
+      else if (c === '}') c = '\\}';
+
+      const overrides = `\\c${fgColor}\\fs${fontSize}\\fscx${fscx}\\fscy${fscy}${ornStr}${extra}`;
+      const assText = `{\\pos(${cx},${cy})\\an5}{${overrides}}${c}`;
+      dialogues.push(`Dialogue: 0,${startStr},${endStr},Cap_Default,,0,0,0,,${assText}`);
+
+    } else if (token.tag === 'DRCS' && drcsIdx < drcsEvents.length) {
+      const ev = drcsEvents[drcsIdx++];
+
+      // Position & scale: レンダラーから (DRCS はオフセット込みの位置)
+      const x = Math.round(ev.tx);
+      const y = Math.round(ev.ty);
+      const drawScaleX = Math.round(ev.sx * 100);
+      const drawScaleY = Math.round(ev.sy * 100);
+
+      // Colors
+      const fgColor = cssColorToASS(ev.fillStyle);
+      const ornStr = ev.ornament
+        ? `\\3c${cssColorToASS(ev.ornament.color)}\\bord3`
+        : '\\3c&H00000000\\bord3';
+
+      // Drawing: 既存の DRCS→ASS 描画変換 (ビットマップ処理は維持)
+      const drawing = drcsToDrawing(token);
+
+      const overrides = `\\c${fgColor}${ornStr}`;
+      const assText = `{\\pos(${x},${y})\\an7}{${overrides}}{\\p1\\fscx${drawScaleX}\\fscy${drawScaleY}}${drawing}{\\p0}`;
+      dialogues.push(`Dialogue: 0,${startStr},${endStr},Cap_Default,,0,0,0,,${assText}`);
+    }
+  }
+  return dialogues;
+}
+
+/** Original batch generateASS — delegates to the refactored functions */
+function generateASS(source, entries) {
+  const firstParsed = entries.find(e => e.parsed?.some(p => p.state?.plane));
+  const plane = firstParsed?.parsed.find(p => p.state?.plane)?.state.plane || [1920, 1080];
+
+  const header = generateASSHeader(source, plane);
+  const allDialogues = [];
+
+  // Build a list of content entries for lookahead
+  const contentIndices = [];
+  for (let i = 0; i < entries.length; i++) {
+    const p = entries[i].parsed;
+    if (p && p.some(t => t.tag === 'Character' || t.tag === 'DRCS')) {
+      contentIndices.push(i);
+    }
+  }
+
+  for (let ci = 0; ci < contentIndices.length; ci++) {
+    const idx = contentIndices[ci];
+    const nextIdx = ci + 1 < contentIndices.length ? contentIndices[ci + 1] : -1;
+    const nextEntry = nextIdx >= 0 ? entries[nextIdx] : null;
+    const lines = generateDialoguesForEntry(entries[idx], nextEntry, plane);
+    allDialogues.push(...lines);
+  }
+
+  return header + allDialogues.join('\n') + '\n';
+}
+
+// ============================================================
+// Incremental flush — write ASS file atomically via rename
+// ============================================================
+
+/**
+ * Write complete ASS file (header + all dialogues so far) atomically.
+ * Writes to a tmp file then renames to avoid partial reads.
+ * @param {string} outputPath - Final output path
+ * @param {string} header - ASS header
+ * @param {string[]} dialogues - All Dialogue lines accumulated so far
+ * @param {boolean} isComplete - If true, append EOF marker
+ */
+function flushASS(outputPath, header, dialogues, isComplete) {
+  let content = header + dialogues.join('\n') + '\n';
+  if (isComplete) {
+    content += '; EOF\n';
+  }
+  const tmpPath = outputPath + '.tmp';
+  writeFileSync(tmpPath, content);
+  renameSync(tmpPath, outputPath);
 }
 
 // ============================================================
@@ -367,6 +417,8 @@ Usage:
   node arib-ts2ass.js --viewer                          デバッグビューアを開く
 
 Options:
+  --incremental   パース中に出力ファイルを逐次更新 (atomic rename)
+                  完了時にファイル末尾に "; EOF" マーカーを付与
   --json <path>   中間 JSON ファイルを出力 (デバッグ用)
   --viewer        ブラウザでデバッグビューアを起動
   -h, --help      ヘルプを表示`);
@@ -406,10 +458,13 @@ if (args.length === 0) {
 const inputPath = args[0];
 let outputPath = null;
 let jsonPath = null;
+let incremental = false;
 
 for (let i = 1; i < args.length; i++) {
   if (args[i] === '--json' && args[i + 1]) {
     jsonPath = args[++i];
+  } else if (args[i] === '--incremental') {
+    incremental = true;
   } else if (!outputPath) {
     outputPath = args[i];
   }
@@ -426,6 +481,33 @@ const webStream = Readable.toWeb(nodeStream);
 const entries = [];
 let count = 0;
 
+// Incremental state
+let plane = null;
+let header = null;
+const allDialogues = [];           // accumulated Dialogue lines
+let pendingEntry = null;           // 1-entry lookahead buffer
+let lastFlushCount = 0;            // dialogues count at last flush
+const FLUSH_INTERVAL_MS = 1000;    // flush at most every 1s
+let lastFlushTime = 0;
+
+/** Check if an entry has renderable content */
+function hasContent(entry) {
+  return entry.parsed?.some(p => p.tag === 'Character' || p.tag === 'DRCS');
+}
+
+/** Flush pending entry when next entry (or EOF) provides the lookahead */
+function flushPending(nextContentEntry) {
+  if (!pendingEntry) return;
+  if (!plane) {
+    const p = pendingEntry.parsed?.find(t => t.state?.plane);
+    plane = p?.state.plane || [1920, 1080];
+    header = generateASSHeader(inputPath, plane);
+  }
+  const lines = generateDialoguesForEntry(pendingEntry, nextContentEntry, plane);
+  allDialogues.push(...lines);
+  pendingEntry = null;
+}
+
 process.stdout.write('字幕抽出中...');
 
 try {
@@ -435,9 +517,25 @@ try {
       const tokens = tokenizer.tokenize(entry.data);
       const parser = new ARIBB24Parser(ARIBB24JapaneseInitialParserState);
       const parsed = parser.parse(tokens);
-      entries.push({ pts: entry.pts, dts: entry.dts, raw: entry, tokens, parsed });
+      const e = { pts: entry.pts, dts: entry.dts, raw: entry, tokens, parsed };
+      entries.push(e);
       count++;
       if (count % 100 === 0) process.stdout.write(`\r字幕抽出中... ${count} 件`);
+
+      // --- Incremental: 1-entry lookahead buffer ---
+      if (incremental && hasContent(e)) {
+        // New content entry arrived — flush the previous pending entry
+        flushPending(e);
+        pendingEntry = e;
+
+        // Time-based flush to file
+        const now = Date.now();
+        if (header && allDialogues.length > lastFlushCount && (now - lastFlushTime >= FLUSH_INTERVAL_MS)) {
+          flushASS(outputPath, header, allDialogues, false);
+          lastFlushCount = allDialogues.length;
+          lastFlushTime = now;
+        }
+      }
     } catch {
       // skip unparseable
     }
@@ -448,12 +546,25 @@ try {
 
 console.log(`\r抽出完了: ${entries.length} 件`);
 
-// --- Generate ASS (raw parsed tokens → recording canvas → ASS) ---
-const ass = generateASS(inputPath, entries);
-writeFileSync(outputPath, ass);
-
-const lineCount = ass.split('\n').filter(l => l.startsWith('Dialogue:')).length;
-console.log(`ASS 出力: ${outputPath} (${lineCount} ダイアログ行)`);
+if (incremental) {
+  // Flush the last pending entry (EOF — no next entry)
+  flushPending(null);
+  // Final atomic write with EOF marker
+  if (!header) {
+    // No content entries at all — write empty ASS
+    plane = [1920, 1080];
+    header = generateASSHeader(inputPath, plane);
+  }
+  flushASS(outputPath, header, allDialogues, true);
+  const lineCount = allDialogues.length;
+  console.log(`ASS 出力: ${outputPath} (${lineCount} ダイアログ行, incremental)`);
+} else {
+  // --- Batch mode (original behavior) ---
+  const ass = generateASS(inputPath, entries);
+  writeFileSync(outputPath, ass);
+  const lineCount = ass.split('\n').filter(l => l.startsWith('Dialogue:')).length;
+  console.log(`ASS 出力: ${outputPath} (${lineCount} ダイアログ行)`);
+}
 
 // --- Optional JSON ---
 if (jsonPath) {

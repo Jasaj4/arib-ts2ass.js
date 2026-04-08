@@ -40,6 +40,12 @@ node arib-ts2ass.js 録画.ts
 node arib-ts2ass.js 録画.ts 字幕.ass
 ```
 
+`--incremental` を付けると、パース中に出力ファイルを逐次更新する（atomic rename）。完了時にファイル末尾に `; EOF` マーカーが付与される:
+
+```bash
+node arib-ts2ass.js 録画.ts 字幕.ass --incremental
+```
+
 デバッグ用に中間 JSON も同時に出力できる:
 
 ```bash
